@@ -8,9 +8,9 @@ export const SHOP_TICKET_PREFIX = (guildId) => `guild:${guildId}:titanshop:ticke
 export const SHOP_ADMIN_PENDING_KEY = (adminId) => `titanshop:adminpending:${adminId}`;
 
 export const SHOP_PLANS = {
-  '10gb': { label: '10 گیگ', price: '100,000 تومان', value: '10gb' },
-  '20gb': { label: '20 گیگ', price: '150,000 تومان', value: '20gb' },
-  unlimited: { label: 'نامحدود', price: '250,000 تومان', value: 'unlimited' },
+  '10gb': { label: '۱۰ گیگ', price: '۱۰۰٬۰۰۰ تومان', value: '10gb' },
+  '20gb': { label: '۲۰ گیگ', price: '۱۵۰٬۰۰۰ تومان', value: '20gb' },
+  unlimited: { label: 'نامحدود', price: '۲۵۰٬۰۰۰ تومان', value: 'unlimited' },
 };
 
 export const SHOP_CARD_NUMBER = '6104 3387 5956 2107';

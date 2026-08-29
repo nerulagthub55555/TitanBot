@@ -16,39 +16,15 @@ import {
   saveShopTicket,
   getShopTicket,
   setAdminPendingConfig,
-  SHOP_PLANS,
   SHOP_CARD_NUMBER,
   SHOP_CARD_HOLDER,
 } from '../../../services/titanShopService.js';
-
-const SHOP_HEADER = '🛒 خرید کانفیگ از ربات نرولا';
-
-function buildPlanButtons() {
-  const row = new ActionRowBuilder();
-  for (const plan of Object.values(SHOP_PLANS)) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`titan_shop_plan:${plan.value}`)
-        .setLabel(`${plan.label} — ${plan.price}`)
-        .setStyle(ButtonStyle.Primary),
-    );
-  }
-  return row;
-}
-
-function buildPaidCancelButtons(planValue) {
-  return new ActionRowBuilder()
-    .addComponents(
-      new ButtonBuilder()
-        .setCustomId(`titan_shop_paid:${planValue}`)
-        .setLabel('پرداخت شد ✅')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`titan_shop_cancel:${planValue}`)
-        .setLabel('لغو ❌')
-        .setStyle(ButtonStyle.Secondary),
-    );
-}
+import {
+  buildPlanSelectRow,
+  buildPaidCancelButtons,
+  buildPlanFields,
+  buildStepsList,
+} from '../../../services/titanShopUI.js';
 
 const buyHandler = {
   name: 'titan_shop_buy',
@@ -63,54 +39,20 @@ const buyHandler = {
       if (!deferred) return;
 
       const embed = createEmbed({
-        title: SHOP_HEADER,
+        title: 'تعرفه‌ها',
         description:
-          'لطفاً تعرفه مورد نظر خود را انتخاب کنید:\n\n' +
-          Object.values(SHOP_PLANS).map((plan) => `**${plan.label}** — ${plan.price}`).join('\n') +
-          '\n\nپس از انتخاب، اطلاعات پرداخت نمایش داده می‌شود.',
+          'تعرفه موردنظر خود را از منوی زیر انتخاب کنید.\n' +
+          'پس از انتخاب، اطلاعات پرداخت نمایش داده می‌شود.',
         color: 'primary',
+        fields: buildPlanFields(),
       });
 
       await InteractionHelper.safeEditReply(interaction, {
         embeds: [embed],
-        components: [buildPlanButtons()],
+        components: [buildPlanSelectRow()],
       });
     } catch (error) {
       logger.error('titan_shop_buy failed', { error: error.message, guildId: interaction.guildId });
-      await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'خطایی رخ داد. دوباره تلاش کنید.' });
-    }
-  },
-};
-
-const planHandler = {
-  name: 'titan_shop_plan',
-  async execute(interaction, client, args) {
-    try {
-      const planValue = args?.[0];
-      const plan = getShopPlan(planValue);
-      if (!plan) {
-        return await replyUserError(interaction, { type: ErrorTypes.VALIDATION, message: 'تعرفه انتخاب‌شده معتبر نیست.' });
-      }
-
-      const deferred = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
-      if (!deferred) return;
-
-      const embed = createEmbed({
-        title: '💳 اطلاعات پرداخت',
-        description:
-          `**تعرفه انتخابی:** ${plan.label} — ${plan.price}\n\n` +
-          '**شماره کارت:**\n`' + SHOP_CARD_NUMBER + '`\n\n' +
-          `**به نام:** ${SHOP_CARD_HOLDER}\n\n` +
-          'پس از انجام پرداخت، روی **پرداخت شد** بزنید و رسید را در چنلی که ساخته می‌شود ارسال کنید.',
-        color: 'warning',
-      });
-
-      await InteractionHelper.safeEditReply(interaction, {
-        embeds: [embed],
-        components: [buildPaidCancelButtons(planValue)],
-      });
-    } catch (error) {
-      logger.error('titan_shop_plan failed', { error: error.message, guildId: interaction.guildId });
       await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'خطایی رخ داد. دوباره تلاش کنید.' });
     }
   },
@@ -421,7 +363,6 @@ const closeTicketHandler = {
 
 export default [
   buyHandler,
-  planHandler,
   paidHandler,
   cancelHandler,
   approveHandler,

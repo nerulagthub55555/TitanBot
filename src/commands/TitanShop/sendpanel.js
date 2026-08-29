@@ -14,10 +14,13 @@ import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import {
   getShopConfig,
   setShopConfig,
-  SHOP_PLANS,
   SHOP_CARD_NUMBER,
   SHOP_CARD_HOLDER,
 } from '../../services/titanShopService.js';
+import {
+  buildPlanFields,
+  buildStepsList,
+} from '../../services/titanShopUI.js';
 
 export const SHOP_BUY_BUTTON_ID = 'titan_shop_buy';
 
@@ -72,16 +75,13 @@ export default {
     }
 
     try {
-      const embed = createEmbed({
-        title: '🛒 خرید کانفیگ از ربات نرولا',
+const embed = createEmbed({
+        title: 'خرید کانفیگ از ربات نرولا',
         description:
-          'برای مشاهده تعرفه‌ها و خرید کانفیگ، روی دکمه زیر کلیک کنید.\n\n' +
-          '**مراحل:**\n' +
-          '۱. انتخاب تعرفه\n' +
-          '۲. پرداخت به کارت اعلام‌شده\n' +
-          '۳. ارسال رسید پرداخت\n\n' +
-          'پس از تأیید، کانفیگ برای شما ارسال خواهد شد.',
+          'برای مشاهده تعرفه‌ها و خرید، روی دکمه زیر کلیک کنید.\n\n' +
+          buildStepsList(),
         color: 'primary',
+        fields: buildPlanFields(),
       });
 
       const buyButton = new ActionRowBuilder().addComponents(
@@ -116,7 +116,6 @@ export default {
         successMessage += '\n⚠️ هیچ ادمینی انتخاب نشده است. رسیدها دریافت نمی‌شوند! برای افزودن ادمین، پنل را حذف و دوباره با `/sendpanel` تنظیم کنید.';
       }
 
-      successMessage += `\n\n**تعرفه‌ها:**\n${Object.values(SHOP_PLANS).map((plan) => `• ${plan.label} — ${plan.price}`).join('\n')}`;
       successMessage += `\n\n**کارت:** \`${SHOP_CARD_NUMBER}\`\n**به نام:** ${SHOP_CARD_HOLDER}`;
 
       await InteractionHelper.safeEditReply(interaction, {
