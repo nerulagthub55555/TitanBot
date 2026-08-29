@@ -10,7 +10,7 @@ export const SHOP_ADMIN_PENDING_KEY = (adminId) => `titanshop:adminpending:${adm
 export const SHOP_PLANS = {
   '10gb': { label: '۱۰ گیگ', price: '۱۰۰٬۰۰۰ تومان', value: '10gb' },
   '20gb': { label: '۲۰ گیگ', price: '۱۵۰٬۰۰۰ تومان', value: '20gb' },
-  unlimited: { label: 'نامحدود', price: '۲۵۰٬۰۰۰ تومان', value: 'unlimited' },
+  '50gb': { label: '۵۰ گیگ', price: '۲۵۰٬۰۰۰ تومان', value: '50gb' },
 };
 
 export const SHOP_CARD_NUMBER = '6104 3387 5956 2107';

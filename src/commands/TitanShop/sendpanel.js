@@ -2,9 +2,6 @@ import {
   SlashCommandBuilder,
   PermissionFlagsBits,
   ChannelType,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   MessageFlags,
 } from 'discord.js';
 import { createEmbed, successEmbed } from '../../utils/embeds.js';
@@ -20,9 +17,8 @@ import {
 import {
   buildPlanFields,
   buildStepsList,
+  buildShopActionRow,
 } from '../../services/titanShopUI.js';
-
-export const SHOP_BUY_BUTTON_ID = 'titan_shop_buy';
 
 export default {
   data: new SlashCommandBuilder()
@@ -66,34 +62,29 @@ export default {
     const adminUser = interaction.options.getUser('admin_user');
 
     const existingConfig = await getShopConfig(client, interaction.guildId);
-    if (existingConfig.panelChannelId) {
-      const channel = interaction.guild.channels.cache.get(existingConfig.panelChannelId);
-      return await replyUserError(interaction, {
-        type: ErrorTypes.UNKNOWN,
-        message: `این سرور قبلاً پنل خرید دارد (${channel ? `در <#${existingConfig.panelChannelId}>` : 'در چنلی که حذف شده'}).\n\nبرای تنظیم مجدد، ابتدا پنل قبلی را حذف کرده و دوباره این دستور را اجرا کنید.`,
-      });
+    if (existingConfig?.panelMessageId && existingConfig?.panelChannelId) {
+      const oldChannel = interaction.guild.channels.cache.get(existingConfig.panelChannelId);
+      if (oldChannel) {
+        await oldChannel.messages
+          .fetch(existingConfig.panelMessageId)
+          .then((msg) => msg.delete().catch(() => {}))
+          .catch(() => {});
+      }
     }
 
     try {
-const embed = createEmbed({
+      const embed = createEmbed({
         title: 'خرید کانفیگ از ربات نرولا',
         description:
-          'برای مشاهده تعرفه‌ها و خرید، روی دکمه زیر کلیک کنید.\n\n' +
+          'برای مشاهده تعرفه‌ها و خرید، از دکمه‌های زیر استفاده کنید.\n\n' +
           buildStepsList(),
         color: 'primary',
         fields: buildPlanFields(),
       });
 
-      const buyButton = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(SHOP_BUY_BUTTON_ID)
-          .setLabel('🛒 خرید کانفیگ')
-          .setStyle(ButtonStyle.Primary),
-      );
-
       const sentPanel = await panelChannel.send({
         embeds: [embed],
-        components: [buyButton],
+        components: [buildShopActionRow()],
       });
 
       const shopConfig = {
@@ -105,7 +96,7 @@ const embed = createEmbed({
 
       await setShopConfig(client, interaction.guildId, shopConfig);
 
-      let successMessage = `پنل خرید با موفقیت در ${panelChannel} ارسال شد.`;
+      let successMessage = `پنل خرید با موفقیت در ${panelChannel} ارسال شد.\nهمه کاربران می‌توانند از آن خرید کنند.`;
       if (adminRole) {
         successMessage += `\nاعضای نقش ${adminRole} مدیر فروشگاه هستند و رسیدها را دریافت می‌کنند.`;
       }
@@ -113,7 +104,7 @@ const embed = createEmbed({
         successMessage += `\n${adminUser} مدیر فروشگاه است و رسیدها را دریافت می‌کند.`;
       }
       if (!adminRole && !adminUser) {
-        successMessage += '\n⚠️ هیچ ادمینی انتخاب نشده است. رسیدها دریافت نمی‌شوند! برای افزودن ادمین، پنل را حذف و دوباره با `/sendpanel` تنظیم کنید.';
+        successMessage += '\n⚠️ هیچ ادمینی انتخاب نشده است؛ رسیدها دریافت نمی‌شوند! برای افزودن ادمین، کافیست دوباره `/sendpanel` را اجرا کنید.';
       }
 
       successMessage += `\n\n**کارت:** \`${SHOP_CARD_NUMBER}\`\n**به نام:** ${SHOP_CARD_HOLDER}`;

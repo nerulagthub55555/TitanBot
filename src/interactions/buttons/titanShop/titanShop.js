@@ -23,11 +23,12 @@ import {
   buildPlanSelectRow,
   buildPaidCancelButtons,
   buildPlanFields,
-  buildStepsList,
+  SHOP_BUY_CUSTOM_ID,
+  SHOP_TEST_CUSTOM_ID,
 } from '../../../services/titanShopUI.js';
 
 const buyHandler = {
-  name: 'titan_shop_buy',
+  name: SHOP_BUY_CUSTOM_ID,
   async execute(interaction, client) {
     try {
       const config = await getShopConfig(client, interaction.guildId);
@@ -110,12 +111,15 @@ const paidHandler = {
       await saveShopTicket(client, interaction.guildId, ticket);
 
       const embed = createEmbed({
-        title: '🧾 ارسال رسید',
+        title: 'ارسال رسید',
         description:
-          `**تعرفه انتخابی:** ${plan.label} — ${plan.price}\n\n` +
-          'لطفاً **رسید پرداخت** را (تصویر) در همین چنل ارسال کنید.\n\n' +
+          'لطفاً **رسید پرداخت** را به‌صورت تصویر در همین چنل ارسال کنید.\n\n' +
           'پس از تأیید توسط مدیر، کانفیگ برای شما ارسال خواهد شد.',
         color: 'success',
+        fields: [
+          { name: 'تعرفه انتخابی', value: plan.label, inline: true },
+          { name: 'مبلغ', value: plan.price, inline: true },
+        ],
       });
 
       const closeRow = new ActionRowBuilder().addComponents(
@@ -149,6 +153,27 @@ const paidHandler = {
         guildId: interaction.guildId,
       });
       await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'ساخت چنل پرداخت با خطا مواجه شد. دوباره تلاش کنید.' });
+    }
+  },
+};
+
+const testHandler = {
+  name: SHOP_TEST_CUSTOM_ID,
+  async execute(interaction, client) {
+    try {
+      const deferred = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
+      if (!deferred) return;
+
+      await InteractionHelper.safeEditReply(interaction, {
+        embeds: [createEmbed({
+          title: 'تست کانفیگ',
+          description: 'در حال حاضر تست موجود نمی‌باشد.',
+          color: 'secondary',
+        })],
+      });
+    } catch (error) {
+      logger.error('titan_shop_test failed', { error: error.message, guildId: interaction.guildId });
+      await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'خطایی رخ داد.' });
     }
   },
 };
@@ -363,6 +388,7 @@ const closeTicketHandler = {
 
 export default [
   buyHandler,
+  testHandler,
   paidHandler,
   cancelHandler,
   approveHandler,

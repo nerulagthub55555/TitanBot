@@ -9,6 +9,21 @@ import {
 import { SHOP_PLANS } from './titanShopService.js';
 
 export const SHOP_HEADER = 'خرید کانفیگ از ربات نرولا';
+export const SHOP_BUY_CUSTOM_ID = 'titan_shop_buy';
+export const SHOP_TEST_CUSTOM_ID = 'titan_shop_test';
+
+export function buildShopActionRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(SHOP_BUY_CUSTOM_ID)
+      .setLabel('خرید کانفیگ')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(SHOP_TEST_CUSTOM_ID)
+      .setLabel('تست')
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
 
 export function buildPlanSelectRow() {
   const select = new StringSelectMenuBuilder()
