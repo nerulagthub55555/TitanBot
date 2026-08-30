@@ -19,6 +19,8 @@ import {
   SHOP_CARD_NUMBER,
   SHOP_CARD_HOLDER,
 } from '../../../services/titanShopService.js';
+import { getShopSettings } from '../../../services/titanShopSettingsService.js';
+import { provisionTestConfig, isPasargadConfigured } from '../../../services/pasargadService.js';
 import {
   buildPlanSelectRow,
   buildPaidCancelButtons,
@@ -163,6 +165,27 @@ const testHandler = {
     try {
       const deferred = await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
       if (!deferred) return;
+
+      const settings = await getShopSettings(client);
+      const config = await getShopConfig(client, interaction.guildId);
+
+      if (settings.testEnabled && config?.mode === 'auto' && isPasargadConfigured(settings.pasargad)) {
+        const result = await provisionTestConfig(settings.pasargad, {
+          username: `test_${interaction.user.id}`,
+          volumeGb: 0.1,
+          durationDays: 1,
+        });
+        if (result.success && result.config) {
+          return await InteractionHelper.safeEditReply(interaction, {
+            embeds: [createEmbed({
+              title: '🎁 کانفیگ تست (۱۰۰MB)',
+              description: 'این یک تست رایگان ۱۰۰MB است.\n\n**کانفیگ:**\n```\n' + result.config + '\n```',
+              color: 'success',
+            })],
+          });
+        }
+        logger.error('Test provision failed', { error: result.error, userId: interaction.user.id });
+      }
 
       await InteractionHelper.safeEditReply(interaction, {
         embeds: [createEmbed({

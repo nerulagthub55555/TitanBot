@@ -44,6 +44,22 @@ export default {
         .setName('admin_user')
         .setDescription('کاربری که مدیر فروشگاه است (رسیدها به او ارسال می‌شود)')
         .setRequired(false),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('mode')
+        .setDescription('روش تأیید خرید')
+        .setRequired(false)
+        .addChoices(
+          { name: 'تایید دستی', value: 'manual' },
+          { name: 'تایید و ساخت خودکار', value: 'auto' },
+        ),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName('test')
+        .setDescription('فعال کردن تست (۱۰۰MB) برای هر کاربر')
+        .setRequired(false),
     ),
   category: 'TitanShop',
 
@@ -60,6 +76,8 @@ export default {
     const panelChannel = interaction.options.getChannel('panel_channel');
     const adminRole = interaction.options.getRole('admin_role');
     const adminUser = interaction.options.getUser('admin_user');
+    const mode = interaction.options.getString('mode') || 'manual';
+    const testEnabled = interaction.options.getBoolean('test') ?? false;
 
     const existingConfig = await getShopConfig(client, interaction.guildId);
     if (existingConfig?.panelMessageId && existingConfig?.panelChannelId) {
@@ -92,11 +110,21 @@ export default {
         panelMessageId: sentPanel?.id || null,
         adminRoleId: adminRole ? adminRole.id : null,
         adminUserId: adminUser ? adminUser.id : null,
+        mode,
+        testEnabled,
       };
 
       await setShopConfig(client, interaction.guildId, shopConfig);
 
       let successMessage = `پنل خرید با موفقیت در ${panelChannel} ارسال شد.\nهمه کاربران می‌توانند از آن خرید کنند.`;
+      if (mode === 'auto') {
+        successMessage += '\nحالت **ساخت خودکار** فعال است — تأیید و ساخت کانفیگ به‌صورت خودکار انجام می‌شود (نیازمند تنظیم کلید API پاسارگاد در داشبورد).';
+      } else {
+        successMessage += '\nحالت **تایید دستی** فعال است.';
+      }
+      if (testEnabled) {
+        successMessage += '\nتست ۱۰۰MB برای کاربران روشن است.';
+      }
       if (adminRole) {
         successMessage += `\nاعضای نقش ${adminRole} مدیر فروشگاه هستند و رسیدها را دریافت می‌کنند.`;
       }

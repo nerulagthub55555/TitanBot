@@ -16,6 +16,12 @@ import {
   getAdminPendingConfig,
   clearAdminPendingConfig,
 } from './titanShopService.js';
+import { getShopSettings } from './titanShopSettingsService.js';
+import {
+  provisionConfig,
+  isPasargadConfigured,
+  normalizeVolumeLabel,
+} from './pasargadService.js';
 
 function getImageAttachments(message) {
   return [...message.attachments.values()]
@@ -70,6 +76,18 @@ export async function handleShopReceiptMessage(message, client) {
     }
 
     const config = await getShopConfig(client, message.guild.id);
+    const settings = await getShopSettings(client);
+
+    // AUTO MODE: when the shop is in auto mode and Pasargad is configured,
+    // skip admin review and auto-approve + provision the config.
+    if (settings.mode === 'auto') {
+      const result = await handleAutoProvision(client, message, ticket, settings);
+      if (result === 'handled') {
+        return true;
+      }
+      // If auto provisioning failed (e.g. API not configured), fall through to manual review.
+    }
+
     const adminIds = await getShopAdminsNoInteraction(client, message.guild, config);
     if (adminIds.length === 0) {
       await message.reply({
@@ -152,6 +170,85 @@ export async function handleShopReceiptMessage(message, client) {
       channelId: message.channel?.id,
     });
     return false;
+  }
+}
+
+/**
+ * Auto mode: verify Pasargad is configured, provision a config for the buyer,
+ * mark the ticket approved/delivered, and send the config into the ticket channel.
+ * @returns {'handled'|'fallthrough'}
+ */
+async function handleAutoProvision(client, message, ticket, settings) {
+  try {
+    if (!isPasargadConfigured(settings.pasargad)) {
+      logger.warn('Shop is in auto mode but Pasargad API is not configured', {
+        guildId: message.guild.id,
+        channelId: message.channel.id,
+      });
+      await message.reply({
+        embeds: [createEmbed({
+          title: '⚠️ تنظیم خودکار کامل نیست',
+          description: 'فروشگاه در حالت خودکار است اما کلید API پاسارگاد هنوز در داشبورد تنظیم نشده. لطفاً با مدیر تماس بگیرید.',
+          color: 'warning',
+        })],
+      }).catch(() => {});
+      return 'fallthrough';
+    }
+
+    await message.reply({
+      embeds: [infoEmbed('⚙️ در حال ساخت کانفیگ', 'رسید شما دریافت شد. در حال ساخت خودکار کانفیگ…')],
+    }).catch(() => {});
+
+    const volumeGb = normalizeVolumeLabel(ticket.plan);
+    const result = await provisionConfig(settings.pasargad, {
+      username: `u_${ticket.userId}`,
+      volumeGb,
+      durationDays: 30,
+    });
+
+    if (!result.success || !result.config) {
+      ticket.status = 'approved';
+      await saveShopTicket(client, message.guild.id, ticket);
+      await message.reply({
+        embeds: [createEmbed({
+          title: '❌ خطا در ساخت کانفیگ',
+          description: `متأسفانه ساخت خودکار کانفیگ با خطا مواجه شد.\n${result.error || 'خطای نامشخص'}\nلطفاً با مدیر تماس بگیرید.`,
+          color: 'error',
+        })],
+      }).catch(() => {});
+      logger.error('Auto provision failed', { error: result.error, userId: message.author.id });
+      return 'handled';
+    }
+
+    ticket.status = 'delivered';
+    ticket.provisionedAt = new Date().toISOString();
+    ticket.configId = result.userId || result.subId || null;
+    await saveShopTicket(client, message.guild.id, ticket);
+
+    await message.channel.send({
+      embeds: [successEmbed(
+        '🎉 کانفیگ شما آماده است',
+        `**تعرفه:** ${ticket.planLabel}\n\n` +
+        '**کانفیگ:**\n```\n' + result.config + '\n```',
+      )],
+    }).catch(() => {});
+
+    logger.info('Auto provision delivered config', {
+      guildId: message.guild.id,
+      channelId: message.channel.id,
+      userId: message.author.id,
+      plan: ticket.plan,
+    });
+
+    return 'handled';
+  } catch (error) {
+    logger.error('handleAutoProvision failed', {
+      error: error.message,
+      stack: error.stack,
+      guildId: message.guild?.id,
+      channelId: message.channel?.id,
+    });
+    return 'fallthrough';
   }
 }
 

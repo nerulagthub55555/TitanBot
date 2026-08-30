@@ -115,7 +115,23 @@ class TitanBot extends Client {
     const maxPortRetryAttempts = Number(process.env.PORT_RETRY_ATTEMPTS || 5);
     const host = process.env.WEB_HOST || '0.0.0.0';
     const corsOrigin = this.config.api?.cors?.origin || '*';
-    
+    app.use(express.json());
+
+    // Attach the client to requests so dashboard routes can access the DB/bot.
+    const shopDashboardRouter = express.Router();
+    shopDashboardRouter.use((req, res, next) => {
+      req.client = this;
+      next();
+    });
+
+    import('./dashboard/webRoutes.js').then(({ default: webRoutes }) => {
+      shopDashboardRouter.use(webRoutes);
+      app.use(shopDashboardRouter);
+      startupLog('✅ Shop dashboard mounted at /dashboard');
+    }).catch((error) => {
+      logger.error('Failed to mount shop dashboard:', error.message);
+    });
+
     app.use((req, res, next) => {
       const allowedOrigins = Array.isArray(corsOrigin) ? corsOrigin : [corsOrigin];
       const origin = req.headers.origin;
