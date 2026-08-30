@@ -1,12 +1,17 @@
-// pasargadService.js — API client for the PasargadVPN panel.
-// Structural skeleton. Exact endpoints/responses vary by panel version;
-// this reads the API key from settings and provides clean helpers that the
-// auto-provision flow will call. Fill in exact paths once the API is verified.
+// pasargadService.js — API client for the Pasargad panel.
+// Based on the official PasarGuard REST API (see src of pasarguard/panel):
+//   - Auth: X-Api-Key header (or `Authorization: apikey <key>`) — NOT Bearer.
+//   - Create user: POST /api/user  -> 200/201 with a UserResponse that includes
+//     `subscription_url` (the link we hand to the buyer as their config).
+//   - data_limit is in bytes (10GB = 10737418240); 0 == unlimited.
+//   - expire is a UTC datetime string, or 0 for unlimited.
 
 import { logger } from '../utils/logger.js';
 
+const GB = 1024 * 1024 * 1024;
+
 export function normalizeVolumeLabel(planValue) {
-  // Map stored plan values to a stable yearly volume in GB.
+  // Map stored plan values to a stable volume in GB.
   switch (planValue) {
     case '50gb':
       return 50;
@@ -18,6 +23,27 @@ export function normalizeVolumeLabel(planValue) {
   }
 }
 
+function volumeBytes(volumeGb) {
+  return Math.round(Number(volumeGb || 0) * GB);
+}
+
+function expireUtc(durationDays) {
+  const days = Math.max(1, Math.round(Number(durationDays || 30)));
+  const ms = Date.now() + days * 24 * 60 * 60 * 1000;
+  return new Date(ms).toISOString();
+}
+
+function sanitizeUsername(raw) {
+  const cleaned = String(raw || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_');
+  // Usernames must be 3..32 chars (a-z, 0-9, underscore).
+  if (cleaned.length < 3) {
+    return `u_${cleaned}`.padEnd(3, '0').slice(0, 32);
+  }
+  return cleaned.slice(0, 32);
+}
+
 /**
  * Create an HTTP request helper against the Pasargad panel.
  * Expects settings.pasargad = { apiKey, baseUrl }.
@@ -27,11 +53,13 @@ function buildClient(pasargad) {
     return null;
   }
 
+  const apiKey = String(pasargad.apiKey);
   return {
     baseUrl: String(pasargad.baseUrl).replace(/\/+$/, ''),
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${pasargad.apiKey}`,
+      'X-Api-Key': apiKey,
+      Authorization: `apikey ${apiKey}`,
     },
   };
 }
@@ -53,6 +81,9 @@ async function request(client, method, path, body = null) {
   }
 
   if (!res.ok) {
+    if (res.status === 409) {
+      throw new Error(`این نام کاربری از قبل در پنل وجود دارد (${res.status}).`);
+    }
     throw new Error(`Pasargad API ${method} ${path} -> ${res.status}: ${text.slice(0, 200)}`);
   }
 
@@ -60,10 +91,38 @@ async function request(client, method, path, body = null) {
 }
 
 /**
+ * Shared body builder for creating a user on the Pasargad panel.
+ */
+function buildCreateBody(payload) {
+  return {
+    username: sanitizeUsername(payload.username),
+    status: 'active',
+    data_limit: volumeBytes(payload.volumeGb),
+    data_limit_reset_strategy: 'no_reset',
+    expire: expireUtc(payload.durationDays),
+    note: payload.note || null,
+  };
+}
+
+/**
+ * Extract the subscription link (config) from a UserResponse-style object.
+ */
+function extractConfig(data) {
+  return (
+    data?.subscription_url
+    || data?.subscriptionUrl
+    || data?.sub_url
+    || data?.link
+    || data?.url
+    || null
+  );
+}
+
+/**
  * Provision a user + config on the Pasargad panel.
  * @param {object} pasargad settings.pasargad
- * @param {object} payload { username, volumeGb, durationDays }
- * @returns {Promise<{ success: boolean, config?: string, raw?: object, error?: string }>}
+ * @param {object} payload { username, volumeGb, durationDays, note }
+ * @returns {Promise<{ success: boolean, config?: string, userId?: number|null, raw?: object, error?: string }>}
  */
 export async function provisionConfig(pasargad, payload) {
   const client = buildClient(pasargad);
@@ -72,22 +131,22 @@ export async function provisionConfig(pasargad, payload) {
   }
 
   try {
-    // NOTE: Adjust path/body to match the actual Pasargad panel API.
-    const data = await request(client, 'POST', '/api/user/create', {
-      username: payload.username,
-      volume_gb: payload.volumeGb,
-      expire_days: payload.durationDays,
-      active: true,
-    });
+    const data = await request(client, 'POST', '/api/user', buildCreateBody(payload));
 
-    const config = data?.config
-      || data?.link
-      || data?.url
-      || (typeof data === 'string' ? data : null);
-    const userId = data?.id || data?.user_id || null;
-    const subId = data?.subscription_id || data?.subId || null;
+    const config = extractConfig(data);
+    const userId = data?.id ?? null;
 
-    return { success: true, userId, subId, config, raw: data };
+    if (!config) {
+      logger.warn('Pasargad create did not return a subscription url', { raw: data });
+      return {
+        success: false,
+        userId,
+        error: 'پاسخ پنل لینک اشتراک (subscription_url) را برنگرداند.',
+        raw: data,
+      };
+    }
+
+    return { success: true, userId, config, raw: data };
   } catch (error) {
     logger.error('Pasargad provisionConfig failed', { error: error.message });
     return { success: false, error: error.message };
@@ -95,7 +154,7 @@ export async function provisionConfig(pasargad, payload) {
 }
 
 /**
- * Create a test (small/quick) config if the panel supports it.
+ * Create a test (small/quick) config on the panel.
  */
 export async function provisionTestConfig(pasargad, payload) {
   const client = buildClient(pasargad);
@@ -104,16 +163,27 @@ export async function provisionTestConfig(pasargad, payload) {
   }
 
   try {
-    const data = await request(client, 'POST', '/api/user/create', {
-      username: payload.username,
-      volume_gb: payload.volumeGb || 0.1,
-      expire_days: payload.durationDays || 1,
-      test: true,
-      active: true,
+    const data = await request(client, 'POST', '/api/user', {
+      ...buildCreateBody(payload),
+      username: sanitizeUsername(payload.username || `test_${Date.now()}`),
+      data_limit: volumeBytes(payload.volumeGb || 0.1),
+      expire: expireUtc(payload.durationDays || 1),
+      note: (payload.note || 'Test account').slice(0, 500),
     });
 
-    const config = data?.config || data?.link || data?.url || null;
-    return { success: true, config, raw: data };
+    const config = extractConfig(data);
+    const userId = data?.id ?? null;
+
+    if (!config) {
+      return {
+        success: false,
+        userId,
+        error: 'پاسخ پنل لینک اشتراک (subscription_url) را برنگرداند.',
+        raw: data,
+      };
+    }
+
+    return { success: true, userId, config, raw: data };
   } catch (error) {
     logger.error('Pasargad provisionTestConfig failed', { error: error.message });
     return { success: false, error: error.message };
@@ -122,4 +192,30 @@ export async function provisionTestConfig(pasargad, payload) {
 
 export function isPasargadConfigured(pasargad) {
   return Boolean(pasargad && pasargad.apiKey && pasargad.baseUrl);
+}
+
+/**
+ * Check that the configured API key + base URL can authenticate against the
+ * panel. Uses a lightweight read endpoint (users simple list) so bad keys or
+ * unreachable hosts fail fast without creating any data.
+ * @param {{apiKey: string, baseUrl: string}} pasargad
+ * @returns {Promise<{ ok: boolean, status?: number, detail?: string, error?: string }>}
+ */
+export async function testPasargadConnection(pasargad) {
+  const client = buildClient(pasargad);
+  if (!client) {
+    return { ok: false, error: 'API Key و Address پنل را وارد کنید.' };
+  }
+
+  try {
+    const data = await request(client, 'GET', '/api/users/simple?limit=1');
+    return { ok: true, status: 200, detail: 'اتصال به پنل برقرار است و کلید API معتبر است.', raw: data };
+  } catch (error) {
+    const m = /Pasargad API GET (.*) -> (\d+)/.exec(error.message || '');
+    return {
+      ok: false,
+      status: m ? Number(m[2]) : null,
+      error: error.message || 'خطای نامشخص',
+    };
+  }
 }
