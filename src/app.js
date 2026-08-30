@@ -17,6 +17,7 @@ import { initializeMusic } from './services/music/riffySetup.js';
 import { shutdownMusic } from './services/music/playerHandler.js';
 import pkg from '../package.json' with { type: 'json' };
 import { EXPECTED_SCHEMA_VERSION, EXPECTED_SCHEMA_LABEL } from './config/database/schemaVersion.js';
+import shopDashboardRoutes from './dashboard/webRoutes.js';
 
 class TitanBot extends Client {
   constructor() {
@@ -117,20 +118,15 @@ class TitanBot extends Client {
     const corsOrigin = this.config.api?.cors?.origin || '*';
     app.use(express.json());
 
-    // Attach the client to requests so dashboard routes can access the DB/bot.
+    // Dashboard routes for the NERULA config shop.
     const shopDashboardRouter = express.Router();
     shopDashboardRouter.use((req, res, next) => {
       req.client = this;
       next();
     });
-
-    import('./dashboard/webRoutes.js').then(({ default: webRoutes }) => {
-      shopDashboardRouter.use(webRoutes);
-      app.use(shopDashboardRouter);
-      startupLog('✅ Shop dashboard mounted at /dashboard');
-    }).catch((error) => {
-      logger.error('Failed to mount shop dashboard:', error.message);
-    });
+    shopDashboardRouter.use(shopDashboardRoutes);
+    app.use(shopDashboardRouter);
+    startupLog('✅ Shop dashboard mounted at /dashboard');
 
     app.use((req, res, next) => {
       const allowedOrigins = Array.isArray(corsOrigin) ? corsOrigin : [corsOrigin];

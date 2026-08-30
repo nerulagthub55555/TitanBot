@@ -17,16 +17,29 @@ function isAuthorized(req, settings, envPassword) {
 
 const router = Router();
 
-router.get('/dashboard', async (req, res) => {
-  const settings = await getShopSettings(req.client);
-  const envPassword = process.env.SHOP_DASHBOARD_PASSWORD || null;
-  const authorized = isAuthorized(req, settings, envPassword);
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch((err) => {
+    logger.error('Shop dashboard route error', { error: err.message, stack: err.stack, url: req.url });
+    if (res.headersSent) {
+      return next(err);
+    }
+    return res.status(500).json({ error: 'Internal Server Error', detail: err.message });
+  });
+}
 
-  res.type('html').send(renderDashboard({ settings, authorized, envPassword }));
-});
+router.get('/dashboard', asyncHandler(async (req, res) => {
+  try {
+    const settings = await getShopSettings(req.client);
+    const envPassword = process.env.SHOP_DASHBOARD_PASSWORD || null;
+    const authorized = isAuthorized(req, settings, envPassword);
+    res.type('html').send(renderDashboard({ settings, authorized, envPassword }));
+  } catch (err) {
+    res.status(500).send('Error rendering dashboard: ' + (err.message || err));
+  }
+}));
 
 // JSON API used by the page.
-router.get('/api/shop/dashboard', async (req, res) => {
+router.get('/api/shop/dashboard', asyncHandler(async (req, res) => {
   const settings = await getShopSettings(req.client);
   const envPassword = process.env.SHOP_DASHBOARD_PASSWORD || null;
   if (!isAuthorized(req, settings, envPassword)) {
@@ -46,9 +59,9 @@ router.get('/api/shop/dashboard', async (req, res) => {
     guilds: configs,
     tickets: guildTickets,
   });
-});
+}));
 
-router.post('/api/shop/settings', async (req, res) => {
+router.post('/api/shop/settings', asyncHandler(async (req, res) => {
   const settings = await getShopSettings(req.client);
   const envPassword = process.env.SHOP_DASHBOARD_PASSWORD || null;
   if (!isAuthorized(req, settings, envPassword)) {
@@ -82,9 +95,9 @@ router.post('/api/shop/settings', async (req, res) => {
 
   const updated = await getShopSettings(req.client);
   res.json({ ok: true, settings: { mode: updated.mode, testEnabled: updated.testEnabled, pasargadConfigured: isPasargadConfigured(updated.pasargad) } });
-});
+}));
 
-router.post('/api/shop/approve', async (req, res) => {
+router.post('/api/shop/approve', asyncHandler(async (req, res) => {
   const settings = await getShopSettings(req.client);
   const envPassword = process.env.SHOP_DASHBOARD_PASSWORD || null;
   if (!isAuthorized(req, settings, envPassword)) {
@@ -114,7 +127,7 @@ router.post('/api/shop/approve', async (req, res) => {
   }).catch(() => {});
 
   res.json({ ok: true });
-});
+}));
 
 async function gatherTickets(client) {
   const result = [];
@@ -192,7 +205,9 @@ function renderDashboard({ settings, authorized, envPassword }) {
     const PASS = ${JSON.stringify(new URLSearchParams(location.search).get('pass') || '')};
     async function api(path, opts){opts=opts||{};opts.headers=opts.headers||{};opts.headers['x-admin-password']=PASS;opts.headers['Content-Type']='application/json';const r=await fetch(path,opts);return r.json();}
     async function load(){
-      const d=await api('/api/shop/dashboard');
+      const r=await fetch('/api/shop/dashboard',{headers:{'x-admin-password':PASS}});
+      let d; try{ d=await r.json(); }catch(e){ document.body.innerHTML='<h2>خطا در دریافت اطلاعات ('+(r.status||'؟')+')</h2><p>لاگ سرور را بررسی کنید.</p>'; return; }
+      if(!d || d.error){ document.body.innerHTML='<h2>خطا: '+(d&&d.error||'نامشخص')+'</h2>'; return; }
       document.getElementById('mode').value=d.settings.mode;
       document.getElementById('testOn').checked=d.settings.testEnabled;
       const rows=d.tickets.map(t=>\`<tr><td>\${t.guildName||t.guildId}</td><td>\${t.userId}</td><td>\${t.planLabel}</td><td>\${t.price}</td><td><span class="tag tag-\${t.status}">\${t.status}</span></td>
