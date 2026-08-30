@@ -202,7 +202,7 @@ function renderDashboard({ settings, authorized, envPassword }) {
     <table><thead><tr><th>سرور</th><th>کاربر</th><th>تعرفه</th><th>مبلغ</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody id="rows"></tbody></table>
   </div>
   <script>
-    const PASS = ${JSON.stringify(new URLSearchParams(location.search).get('pass') || '')};
+    const PASS = new URLSearchParams(location.search).get('pass') || '';
     async function api(path, opts){opts=opts||{};opts.headers=opts.headers||{};opts.headers['x-admin-password']=PASS;opts.headers['Content-Type']='application/json';const r=await fetch(path,opts);return r.json();}
     async function load(){
       const r=await fetch('/api/shop/dashboard',{headers:{'x-admin-password':PASS}});
